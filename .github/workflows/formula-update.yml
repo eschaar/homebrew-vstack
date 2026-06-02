@@ -108,7 +108,7 @@ jobs:
               data = json.load(r)
           sdist = next(u for u in data['urls'] if u.get('packagetype') == 'sdist')
 
-          with open('${{ github.output }}', 'a', encoding='utf-8') as fh:
+          with open('$GITHUB_OUTPUT', 'a', encoding='utf-8') as fh:
               fh.write(f"url={sdist['url']}\n")
               fh.write(f"sha256={sdist['digests']['sha256']}\n")
           PY

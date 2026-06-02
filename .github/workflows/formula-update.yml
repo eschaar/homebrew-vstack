@@ -1,0 +1,160 @@
+name: Update Formula
+
+on:
+  repository_dispatch:
+    types: [update-formula]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (X.Y.Z)"
+        required: true
+      sdist_url:
+        description: "PyPI sdist URL"
+        required: true
+      sha256:
+        description: "SHA256 of sdist"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Resolve payload
+        id: payload
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PAYLOAD_JSON: ${{ toJson(github.event.client_payload) }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SDIST_URL: ${{ inputs.sdist_url }}
+          INPUT_SHA256: ${{ inputs.sha256 }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          event = os.environ["EVENT_NAME"]
+
+          if event == "repository_dispatch":
+              payload = json.loads(os.environ.get("PAYLOAD_JSON") or "{}")
+              version = payload.get("version", "")
+              sdist_url = payload.get("sdist_url", "")
+              sha256 = payload.get("sha256", "")
+              signature = payload.get("signature", "")
+
+              secret = os.environ.get("HOMEBREW_TAP_DISPATCH_SECRET", "")
+              if not secret:
+                  print("ERROR: missing HOMEBREW_TAP_DISPATCH_SECRET in tap repository secrets", file=sys.stderr)
+                  sys.exit(1)
+
+              if not signature:
+                  print("ERROR: missing signature in dispatch payload", file=sys.stderr)
+                  sys.exit(1)
+
+              import hmac
+              from hashlib import sha256 as sha256_func
+              canonical_obj = {
+                  "sha256": sha256,
+                  "sdist_url": sdist_url,
+                  "version": version,
+              }
+              canonical = json.dumps(canonical_obj, separators=(",", ":"), sort_keys=True)
+              expected = hmac.new(secret.encode("utf-8"), canonical.encode("utf-8"), sha256_func).hexdigest()
+              if not hmac.compare_digest(signature, expected):
+                  print("ERROR: invalid payload signature", file=sys.stderr)
+                  sys.exit(1)
+          else:
+              version = os.environ.get("INPUT_VERSION", "")
+              sdist_url = os.environ.get("INPUT_SDIST_URL", "")
+              sha256 = os.environ.get("INPUT_SHA256", "")
+
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              print(f"ERROR: invalid version '{version}'", file=sys.stderr)
+              sys.exit(1)
+
+          if not sdist_url.startswith("https://files.pythonhosted.org/"):
+              print("ERROR: sdist_url must point to files.pythonhosted.org", file=sys.stderr)
+              sys.exit(1)
+
+          if not re.fullmatch(r"[a-f0-9]{64}", sha256):
+              print("ERROR: sha256 must be a 64-character lowercase hex string", file=sys.stderr)
+              sys.exit(1)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"version={version}\n")
+              fh.write(f"sdist_url={sdist_url}\n")
+              fh.write(f"sha256={sha256}\n")
+          PY
+        env:
+          HOMEBREW_TAP_DISPATCH_SECRET: ${{ secrets.HOMEBREW_TAP_DISPATCH_SECRET }}
+
+      - name: Fetch PyYAML checksum
+        id: pyyaml
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.request
+
+          with urllib.request.urlopen('https://pypi.org/pypi/PyYAML/6.0.2/json') as r:
+              data = json.load(r)
+          sdist = next(u for u in data['urls'] if u.get('packagetype') == 'sdist')
+
+          with open('${{ github.output }}', 'a', encoding='utf-8') as fh:
+              fh.write(f"url={sdist['url']}\n")
+              fh.write(f"sha256={sdist['digests']['sha256']}\n")
+          PY
+
+      - name: Rewrite formula
+        shell: bash
+        run: |
+          cat > Formula/vstack.rb <<RUBY
+          class Vstack < Formula
+            include Language::Python::Virtualenv
+
+            desc "VS Code-native AI engineering workflow system"
+            homepage "https://github.com/eschaar/vstack"
+            url "${{ steps.payload.outputs.sdist_url }}"
+            sha256 "${{ steps.payload.outputs.sha256 }}"
+            license "MIT"
+
+            depends_on "python@3.11"
+
+            resource "pyyaml" do
+              url "${{ steps.pyyaml.outputs.url }}"
+              sha256 "${{ steps.pyyaml.outputs.sha256 }}"
+            end
+
+            def install
+              virtualenv_install_with_resources
+            end
+
+            test do
+              output = shell_output("#{bin}/vstack --help")
+              assert_match "Usage:", output
+            end
+          end
+          RUBY
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/vstack.rb
+          if git diff --cached --quiet; then
+            echo "No formula changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(formula): update vstack ${VERSION}"
+          git push
+        env:
+          VERSION: ${{ steps.payload.outputs.version }}

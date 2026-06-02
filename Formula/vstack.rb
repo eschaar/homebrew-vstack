@@ -3,8 +3,8 @@ class Vstack < Formula
 
   desc "VS Code-native AI engineering workflow system"
   homepage "https://github.com/eschaar/vstack"
-  url "https://files.pythonhosted.org/packages/e5/50/fe8c8220c952f7215b0cf97ea434af6c0d4eda372d95957da95a1539e7fc/vstack-3.4.2.tar.gz"
-  sha256 "42e54d8e390b18d7b9c80df314fe593c017efebe959c2a5f1a031ffc140e084a"
+  url "https://files.pythonhosted.org/packages/8c/b9/c14ae0b9450e6927e98e325d3389dcf7850869a52f13cffc21888cce1204/vstack-3.5.1.tar.gz"
+  sha256 "c92b15941bbecd120452dce034beadbac5b7227cdd5feb1a68b98d6bdae397ae"
   license "MIT"
 
   depends_on "python@3.11"

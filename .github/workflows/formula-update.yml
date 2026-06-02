@@ -34,6 +34,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_SDIST_URL: ${{ inputs.sdist_url }}
           INPUT_SHA256: ${{ inputs.sha256 }}
+          HOMEBREW_TAP_DISPATCH_SECRET: ${{ secrets.HOMEBREW_TAP_DISPATCH_SECRET }}
         run: |
           python - <<'PY'
           import json
@@ -93,8 +94,6 @@ jobs:
               fh.write(f"sdist_url={sdist_url}\n")
               fh.write(f"sha256={sha256}\n")
           PY
-        env:
-          HOMEBREW_TAP_DISPATCH_SECRET: ${{ secrets.HOMEBREW_TAP_DISPATCH_SECRET }}
 
       - name: Fetch PyYAML checksum
         id: pyyaml

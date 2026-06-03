@@ -191,6 +191,10 @@ jobs:
             exit 0
           fi
           git commit -m "chore(formula): update vstack ${VERSION}"
-          git push
+          git push origin HEAD:main
         env:
           VERSION: ${{ steps.payload.outputs.version }}
+
+      - name: Cleanup local tap
+        if: always()
+        run: brew untap eschaar/vstack || true

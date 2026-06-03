@@ -20,13 +20,10 @@ permissions:
 
 jobs:
   update-formula:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@d0dd492210067c1b5f8857ab6c5dd52c29944e44
 
       - name: Tap local repository
         run: |
@@ -185,6 +182,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git add Formula/vstack.rb
           if git diff --cached --quiet; then
             echo "No formula changes to commit"
@@ -193,8 +191,5 @@ jobs:
           git commit -m "chore(formula): update vstack ${VERSION}"
           git push origin HEAD:main
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.payload.outputs.version }}
-
-      - name: Cleanup local tap
-        if: always()
-        run: brew untap eschaar/vstack || true

@@ -25,6 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@d0dd492210067c1b5f8857ab6c5dd52c29944e44
+
       - name: Resolve payload
         id: payload
         shell: bash
@@ -95,23 +98,6 @@ jobs:
               fh.write(f"sha256={sha256}\n")
           PY
 
-      - name: Fetch PyYAML checksum
-        id: pyyaml
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json
-          import urllib.request
-
-          with urllib.request.urlopen('https://pypi.org/pypi/PyYAML/6.0.2/json') as r:
-              data = json.load(r)
-          sdist = next(u for u in data['urls'] if u.get('packagetype') == 'sdist')
-
-          with open('$GITHUB_OUTPUT', 'a', encoding='utf-8') as fh:
-              fh.write(f"url={sdist['url']}\n")
-              fh.write(f"sha256={sdist['digests']['sha256']}\n")
-          PY
-
       - name: Rewrite formula
         shell: bash
         run: |
@@ -127,11 +113,6 @@ jobs:
 
             depends_on "python@3.11"
 
-            resource "pyyaml" do
-              url "${{ steps.pyyaml.outputs.url }}"
-              sha256 "${{ steps.pyyaml.outputs.sha256 }}"
-            end
-
             def install
               virtualenv_install_with_resources
             end
@@ -142,6 +123,16 @@ jobs:
             end
           end
           RUBY
+
+      - name: Auto-generate Python resources
+        shell: bash
+        run: brew update-python-resources Formula/vstack.rb
+
+      - name: Show generated resources
+        shell: bash
+        run: |
+          echo "Generated resource blocks in Formula/vstack.rb:"
+          grep -n '^  resource \|^    url \|^    sha256 ' Formula/vstack.rb || true
 
       - name: Commit and push
         shell: bash

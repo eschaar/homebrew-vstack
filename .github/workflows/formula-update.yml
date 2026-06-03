@@ -128,6 +128,47 @@ jobs:
         shell: bash
         run: brew update-python-resources Formula/vstack.rb
 
+      - name: Sync native dependencies from audit hints
+        shell: bash
+        run: |
+          set +e
+          brew audit --strict Formula/vstack.rb > audit.log 2>&1
+          set -e
+
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          formula_path = Path("Formula/vstack.rb")
+          audit_log = Path("audit.log")
+
+          text = formula_path.read_text(encoding="utf-8")
+          audit_output = audit_log.read_text(encoding="utf-8") if audit_log.exists() else ""
+
+          # Parse: Add `depends_on` lines above for "<lib>".
+          needed_libs = sorted(set(re.findall(r'Add `depends_on` lines above for "([^"]+)"\.', audit_output)))
+
+          missing_libs = [lib for lib in needed_libs if f'depends_on "{lib}"' not in text]
+          if missing_libs:
+            dep_block = "".join(f'  depends_on "{lib}"\n' for lib in missing_libs)
+            text = text.replace('license "MIT"\n\n', f'license "MIT"\n\n{dep_block}', 1)
+
+          # De-duplicate depends_on lines while preserving order.
+          out_lines = []
+          seen_dep_lines = set()
+          for line in text.splitlines():
+            if line.strip().startswith('depends_on "'):
+              if line in seen_dep_lines:
+                continue
+              seen_dep_lines.add(line)
+            out_lines.append(line)
+
+          formula_path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+          PY
+
+          echo "Audit hints:"
+          cat audit.log || true
+
       - name: Show generated resources
         shell: bash
         run: |

@@ -20,6 +20,6 @@ class Vstack < Formula
 
   test do
     output = shell_output("#{bin}/vstack --help")
-    assert_match "Usage:", output
+    assert_match(/usage:/i, output)
   end
 end

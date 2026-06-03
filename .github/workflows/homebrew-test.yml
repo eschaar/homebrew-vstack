@@ -32,38 +32,32 @@ jobs:
   test:
     name: Install, Test and Audit Formula
     runs-on: macos-latest
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
 
     steps:
       # Step 1: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      # Step 2: Set up a clean Homebrew environment
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@d0dd492210067c1b5f8857ab6c5dd52c29944e44
-
-      # Step 3: Tap this repository locally
+      # Step 2: Tap this repository locally
       # This makes the formula available without fetching from GitHub
       - name: Tap local repository
         run: |
           brew untap eschaar/vstack || true
           brew tap eschaar/vstack "$GITHUB_WORKSPACE"
 
-      # Step 4: Update Homebrew metadata
-      - name: Update Homebrew
-        run: brew update
-
-      # Step 5: Install the formula
+      # Step 3: Install the formula
       # This verifies that the formula builds and installs correctly
       - name: Install formula
         run: brew install eschaar/vstack/vstack
 
-      # Step 6: Run the formula's test block
+      # Step 4: Run the formula's test block
       # Requires a valid `test do` block in the formula
       - name: Run formula test
         run: brew test eschaar/vstack/vstack
 
-      # Step 7: Audit the formula against Homebrew standards
+      # Step 5: Audit the formula against Homebrew standards
       # Ensures compliance with best practices and policies
       - name: Audit formula
         run: brew audit --strict --online eschaar/vstack/vstack

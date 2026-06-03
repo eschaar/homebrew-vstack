@@ -28,6 +28,11 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@d0dd492210067c1b5f8857ab6c5dd52c29944e44
 
+      - name: Tap local repository
+        run: |
+          brew untap eschaar/vstack || true
+          brew tap eschaar/vstack "$GITHUB_WORKSPACE"
+
       - name: Resolve payload
         id: payload
         shell: bash
@@ -126,13 +131,13 @@ jobs:
 
       - name: Auto-generate Python resources
         shell: bash
-        run: brew update-python-resources Formula/vstack.rb
+        run: brew update-python-resources eschaar/vstack/vstack
 
       - name: Sync native dependencies from audit hints
         shell: bash
         run: |
           set +e
-          brew audit --strict Formula/vstack.rb > audit.log 2>&1
+          brew audit --strict eschaar/vstack/vstack > audit.log 2>&1
           set -e
 
           python - <<'PY'

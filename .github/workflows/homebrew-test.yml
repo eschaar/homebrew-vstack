@@ -55,7 +55,9 @@ jobs:
       # This makes the formula available without fetching from GitHub
       - name: Tap local repository
         run: |
-          brew untap eschaar/vstack || true
+          if brew tap | grep -qx 'eschaar/vstack'; then
+            brew untap eschaar/vstack
+          fi
           brew tap eschaar/vstack "$GITHUB_WORKSPACE"
 
       # Step 3: Install the formula

@@ -31,7 +31,9 @@ jobs:
       # Ensure the workflow always operates on this repository's tap contents.
       - name: Tap local repository
         run: |
-          brew untap eschaar/vstack || true
+          if brew tap | grep -qx 'eschaar/vstack'; then
+            brew untap eschaar/vstack
+          fi
           brew tap eschaar/vstack "$GITHUB_WORKSPACE"
 
       # Normalize and validate payload fields from either dispatch or manual input.

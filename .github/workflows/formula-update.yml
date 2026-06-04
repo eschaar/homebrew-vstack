@@ -1,6 +1,7 @@
 name: Update Formula
 
 on:
+  # Supports both trusted release automation and operator-driven manual updates.
   repository_dispatch:
     types: [update-formula]
   workflow_dispatch:
@@ -16,20 +17,24 @@ on:
         required: true
 
 permissions:
+  # Required to commit and push formula updates back to main.
   contents: write
 
 jobs:
   update-formula:
+    # macOS provides a stable Homebrew environment for resource generation.
     runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
+      # Ensure the workflow always operates on this repository's tap contents.
       - name: Tap local repository
         run: |
           brew untap eschaar/vstack || true
           brew tap eschaar/vstack "$GITHUB_WORKSPACE"
 
+      # Normalize and validate payload fields from either dispatch or manual input.
       - name: Resolve payload
         id: payload
         shell: bash
@@ -42,6 +47,8 @@ jobs:
           HOMEBREW_TAP_DISPATCH_SECRET: ${{ secrets.HOMEBREW_TAP_DISPATCH_SECRET }}
         run: |
           python - <<'PY'
+          """Validate dispatch/manual inputs and emit normalized workflow outputs."""
+
           import json
           import os
           import re
@@ -100,6 +107,7 @@ jobs:
               fh.write(f"sha256={sha256}\n")
           PY
 
+          # Write a clean base formula. Python resources are injected in later steps.
       - name: Rewrite formula
         shell: bash
         run: |
@@ -126,10 +134,19 @@ jobs:
           end
           RUBY
 
+      # Populate Python dependencies from package metadata (PyPI).
       - name: Auto-generate Python resources
         shell: bash
         run: brew update-python-resources eschaar/vstack/vstack
 
+      # update-python-resources edits the tapped formula path; copy it back to repo workspace.
+      - name: Sync generated formula back to workspace
+        shell: bash
+        run: |
+          tap_formula="$(brew --repository eschaar/vstack)/Formula/vstack.rb"
+          cp "$tap_formula" Formula/vstack.rb
+
+      # Parse audit guidance and add missing native library dependencies automatically.
       - name: Sync native dependencies from audit hints
         shell: bash
         run: |
@@ -138,6 +155,8 @@ jobs:
           set -e
 
           python - <<'PY'
+          """Apply audit-suggested depends_on entries and deduplicate dependency lines."""
+
           import re
           from pathlib import Path
 
@@ -171,12 +190,14 @@ jobs:
           echo "Audit hints:"
           cat audit.log || true
 
+      # Keep generated resources visible in job logs for troubleshooting and reviews.
       - name: Show generated resources
         shell: bash
         run: |
           echo "Generated resource blocks in Formula/vstack.rb:"
           grep -n '^  resource \|^    url \|^    sha256 ' Formula/vstack.rb || true
 
+      # Commit formula updates back to main when generated output differs.
       - name: Commit and push
         shell: bash
         run: |

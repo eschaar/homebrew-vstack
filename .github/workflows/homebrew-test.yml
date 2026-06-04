@@ -1,6 +1,8 @@
 name: Test Homebrew Tap
 
 on:
+  # Trigger this workflow on formula/workflow updates, a weekly health check,
+  # or an explicit manual run.
   # Run when formula or workflow files change on main
   push:
     branches: [ main ]
@@ -22,9 +24,11 @@ on:
   workflow_dispatch:
 
 permissions:
+  # Read-only access is sufficient for install/test/audit checks.
   contents: read
 
 concurrency:
+  # Keep at most one run per ref to avoid redundant CI work.
   group: homebrew-test-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -33,6 +37,7 @@ jobs:
     name: Install, Test and Audit Formula
     runs-on: macos-latest
     env:
+      # Speed up Homebrew commands by skipping implicit updates in this job.
       HOMEBREW_NO_AUTO_UPDATE: "1"
 
     steps:

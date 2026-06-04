@@ -9,12 +9,14 @@ on:
     paths:
       - "Formula/*.rb"
       - ".github/workflows/homebrew-test.yml"
+      - ".github/workflows/formula-update.yml"
 
   # Run for pull requests that modify the formula
   pull_request:
     paths:
       - "Formula/*.rb"
       - ".github/workflows/homebrew-test.yml"
+      - ".github/workflows/formula-update.yml"
 
   # Run weekly to detect regressions (e.g. broken URLs, checksum issues)
   schedule:

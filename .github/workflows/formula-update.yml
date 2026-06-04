@@ -206,6 +206,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin main
+          git rebase origin/main
           git add Formula/vstack.rb
           if git diff --cached --quiet; then
             echo "No formula changes to commit"

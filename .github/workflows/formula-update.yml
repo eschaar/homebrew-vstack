@@ -191,7 +191,13 @@ jobs:
       # Populate Python dependencies from package metadata (PyPI).
       - name: Auto-generate Python resources
         shell: bash
-        run: brew update-python-resources eschaar/vstack/vstack
+        env:
+          PYTHON_VERSION: ${{ steps.payload.outputs.python_version }}
+        run: |
+          # Ensure the target Python version is installed in Homebrew's environment
+          brew install "$PYTHON_VERSION"
+          # Generate resources using the resolved Python version from the formula
+          brew update-python-resources eschaar/vstack/vstack
 
       # update-python-resources edits the tapped formula path; copy it back to repo workspace.
       - name: Sync generated formula back to workspace

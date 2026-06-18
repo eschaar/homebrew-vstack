@@ -45,6 +45,9 @@ jobs:
     env:
       # Speed up Homebrew commands by skipping implicit updates in this job.
       HOMEBREW_NO_AUTO_UPDATE: "1"
+      TAP_NAME: eschaar/vstack
+      FORMULA_FULL_NAME: eschaar/vstack/vstack
+      FORMULA_FILE: Formula/vstack.rb
 
     steps:
       # Step 1: Checkout repository
@@ -55,10 +58,10 @@ jobs:
       # This makes the formula available without fetching from GitHub
       - name: Tap local repository
         run: |
-          if brew tap | grep -qx 'eschaar/vstack'; then
-            brew untap eschaar/vstack
+          if brew tap | grep -qx "$TAP_NAME"; then
+            brew untap "$TAP_NAME"
           fi
-          brew tap eschaar/vstack "$GITHUB_WORKSPACE"
+          brew tap "$TAP_NAME" "$GITHUB_WORKSPACE"
 
       # Step 3: Collect concise environment diagnostics
       # Keeps logs short while still showing Python/Homebrew context.
@@ -79,16 +82,16 @@ jobs:
       # Step 4: Install the formula
       # This verifies that the formula builds and installs correctly
       - name: Install formula
-        run: brew install eschaar/vstack/vstack
+        run: brew install "$FORMULA_FULL_NAME"
 
       # Step 5: Resolve and install declared Python dependency from formula
       # Homebrew CI can occasionally miss test deps when formula metadata is stale.
       - name: Install declared Python dependency
         shell: bash
         run: |
-          python_formula="$(grep -Eo 'depends_on "python@[0-9]+\.[0-9]+"' Formula/vstack.rb | head -n1 | sed -E 's/depends_on "(python@[0-9]+\.[0-9]+)"/\1/')"
+          python_formula="$(grep -Eo 'depends_on "python@[0-9]+\.[0-9]+"' "$FORMULA_FILE" | head -n1 | sed -E 's/depends_on "(python@[0-9]+\.[0-9]+)"/\1/')"
           if [[ -z "$python_formula" ]]; then
-            echo "ERROR: Could not resolve python dependency from Formula/vstack.rb"
+            echo "ERROR: Could not resolve python dependency from $FORMULA_FILE"
             exit 1
           fi
           echo "Resolved python dependency: $python_formula"
@@ -97,7 +100,7 @@ jobs:
       # Step 6: Install formula test dependencies
       # `brew test` fails early when test dependencies are not present.
       - name: Install test dependencies
-        run: brew install --only-dependencies --include-test eschaar/vstack/vstack
+        run: brew install --only-dependencies --include-test "$FORMULA_FULL_NAME"
 
       # Step 7: Run the formula's test block
       # Requires a valid `test do` block in the formula
@@ -105,12 +108,12 @@ jobs:
       - name: Run formula test
         id: test
         continue-on-error: true
-        run: brew test eschaar/vstack/vstack
+        run: brew test "$FORMULA_FULL_NAME"
 
       # Step 8: Audit the formula against Homebrew standards
       # Ensures compliance with best practices and policies
       - name: Audit formula
-        run: brew audit --strict --online eschaar/vstack/vstack
+        run: brew audit --strict --online "$FORMULA_FULL_NAME"
 
       # Step 9: Generate job summary with test status
       - name: Add job summary

@@ -35,8 +35,14 @@ jobs:
     # macOS provides a stable Homebrew environment for resource generation.
     runs-on: macos-latest
     env:
+      TAP_NAME: eschaar/vstack
+      FORMULA_FULL_NAME: eschaar/vstack/vstack
+      FORMULA_FILE: Formula/vstack.rb
       DEFAULT_PYTHON_VERSION: python@3.13
       ALLOWED_PYTHON_VERSIONS: "python@3.11 python@3.12 python@3.13 python@3.14"
+      PYPI_HOST_PREFIX: https://files.pythonhosted.org/
+      VERSION_REGEX: "[0-9]+\\.[0-9]+\\.[0-9]+"
+      SHA256_REGEX: "[a-f0-9]{64}"
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -69,9 +75,7 @@ jobs:
               version = payload.get("version", "")
               sdist_url = payload.get("sdist_url", "")
               sha256 = payload.get("sha256", "")
-              python_version = payload.get(
-                "python_version", os.environ.get("DEFAULT_PYTHON_VERSION", "python@3.13")
-              )
+              python_version = payload.get("python_version", os.environ.get("DEFAULT_PYTHON_VERSION", ""))
               signature = payload.get("signature", "")
 
               secret = os.environ.get("HOMEBREW_TAP_DISPATCH_SECRET", "")
@@ -99,19 +103,17 @@ jobs:
               version = os.environ.get("INPUT_VERSION", "")
               sdist_url = os.environ.get("INPUT_SDIST_URL", "")
               sha256 = os.environ.get("INPUT_SHA256", "")
-              python_version = os.environ.get(
-                "INPUT_PYTHON_VERSION", os.environ.get("DEFAULT_PYTHON_VERSION", "python@3.13")
-              )
+              python_version = os.environ.get("INPUT_PYTHON_VERSION", os.environ.get("DEFAULT_PYTHON_VERSION", ""))
 
-          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+          if not re.fullmatch(os.environ.get("VERSION_REGEX", r"[0-9]+\.[0-9]+\.[0-9]+"), version):
               print(f"ERROR: invalid version '{version}'", file=sys.stderr)
               sys.exit(1)
 
-          if not sdist_url.startswith("https://files.pythonhosted.org/"):
+          if not sdist_url.startswith(os.environ.get("PYPI_HOST_PREFIX", "https://files.pythonhosted.org/")):
               print("ERROR: sdist_url must point to files.pythonhosted.org", file=sys.stderr)
               sys.exit(1)
 
-          if not re.fullmatch(r"[a-f0-9]{64}", sha256):
+          if not re.fullmatch(os.environ.get("SHA256_REGEX", r"[a-f0-9]{64}"), sha256):
               print("ERROR: sha256 must be a 64-character lowercase hex string", file=sys.stderr)
               sys.exit(1)
 
@@ -183,17 +185,17 @@ jobs:
       # Ensure the workflow now operates on this repository's updated tap contents.
       - name: Tap local repository
         run: |
-          if brew tap | grep -qx 'eschaar/vstack'; then
-            brew untap eschaar/vstack
+          if brew tap | grep -qx "$TAP_NAME"; then
+            brew untap "$TAP_NAME"
           fi
-          brew tap eschaar/vstack "$GITHUB_WORKSPACE"
+          brew tap "$TAP_NAME" "$GITHUB_WORKSPACE"
 
       # brew tap clones from git history; copy rewritten formula so tap sees current run inputs.
       - name: Sync rewritten formula to tapped repository
         shell: bash
         run: |
-          tap_formula="$(brew --repository eschaar/vstack)/Formula/vstack.rb"
-          cp Formula/vstack.rb "$tap_formula"
+          tap_formula="$(brew --repository "$TAP_NAME")/$FORMULA_FILE"
+          cp "$FORMULA_FILE" "$tap_formula"
 
       # Populate Python dependencies from package metadata (PyPI).
       - name: Auto-generate Python resources
@@ -204,30 +206,31 @@ jobs:
           # Ensure the target Python version is installed in Homebrew's environment
           brew install "$PYTHON_VERSION"
           # Generate resources using the resolved Python version from the formula
-          brew update-python-resources eschaar/vstack/vstack
+          brew update-python-resources "$FORMULA_FULL_NAME"
 
       # update-python-resources edits the tapped formula path; copy it back to repo workspace.
       - name: Sync generated formula back to workspace
         shell: bash
         run: |
-          tap_formula="$(brew --repository eschaar/vstack)/Formula/vstack.rb"
-          cp "$tap_formula" Formula/vstack.rb
+          tap_formula="$(brew --repository "$TAP_NAME")/$FORMULA_FILE"
+          cp "$tap_formula" "$FORMULA_FILE"
 
       # Parse audit guidance and add missing native library dependencies automatically.
       - name: Sync native dependencies from audit hints
         shell: bash
         run: |
           set +e
-          brew audit --strict eschaar/vstack/vstack > audit.log 2>&1
+          brew audit --strict "$FORMULA_FULL_NAME" > audit.log 2>&1
           set -e
 
           python - <<'PY'
           """Apply audit-suggested depends_on entries and deduplicate dependency lines."""
 
+          import os
           import re
           from pathlib import Path
 
-          formula_path = Path("Formula/vstack.rb")
+          formula_path = Path(os.environ.get("FORMULA_FILE", "Formula/vstack.rb"))
           audit_log = Path("audit.log")
 
           text = formula_path.read_text(encoding="utf-8")
@@ -261,8 +264,8 @@ jobs:
       - name: Show generated resources
         shell: bash
         run: |
-          echo "Generated resource blocks in Formula/vstack.rb:"
-          grep -n '^  resource \|^    url \|^    sha256 ' Formula/vstack.rb || true
+          echo "Generated resource blocks in $FORMULA_FILE:"
+          grep -n '^  resource \|^    url \|^    sha256 ' "$FORMULA_FILE" || true
 
       # Commit formula updates back to main when generated output differs.
       - name: Commit and push
@@ -271,7 +274,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git add Formula/vstack.rb
+          git add "$FORMULA_FILE"
           if git diff --cached --quiet; then
             echo "No formula changes to commit"
             exit 0

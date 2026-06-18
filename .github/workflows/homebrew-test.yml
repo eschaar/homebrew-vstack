@@ -92,7 +92,11 @@ jobs:
       - name: Run formula test
         id: test
         continue-on-error: true
-        run: brew test "$FORMULA_FULL_NAME"
+        shell: bash
+        run: |
+          # Ensure Homebrew records test dependencies on the installed formula receipt.
+          brew reinstall --include-test "$FORMULA_FULL_NAME" || brew install --include-test "$FORMULA_FULL_NAME"
+          brew test "$FORMULA_FULL_NAME"
 
       # Step 6: Audit the formula against Homebrew standards
       # Ensures compliance with best practices and policies

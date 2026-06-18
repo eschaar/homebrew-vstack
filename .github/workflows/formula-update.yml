@@ -188,6 +188,13 @@ jobs:
           fi
           brew tap eschaar/vstack "$GITHUB_WORKSPACE"
 
+      # brew tap clones from git history; copy rewritten formula so tap sees current run inputs.
+      - name: Sync rewritten formula to tapped repository
+        shell: bash
+        run: |
+          tap_formula="$(brew --repository eschaar/vstack)/Formula/vstack.rb"
+          cp Formula/vstack.rb "$tap_formula"
+
       # Populate Python dependencies from package metadata (PyPI).
       - name: Auto-generate Python resources
         shell: bash

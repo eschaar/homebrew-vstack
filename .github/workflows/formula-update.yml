@@ -16,7 +16,13 @@ on:
         description: "SHA256 of sdist"
         required: true
       python_version:
-        description: "Homebrew Python version (e.g., python@3.11, python@3.13)"
+        description: "Homebrew Python version"
+        type: choice
+        options:
+          - python@3.11
+          - python@3.12
+          - python@3.13
+          - python@3.14
         required: false
         default: "python@3.13"
 
@@ -28,6 +34,9 @@ jobs:
   update-formula:
     # macOS provides a stable Homebrew environment for resource generation.
     runs-on: macos-latest
+    env:
+      DEFAULT_PYTHON_VERSION: python@3.13
+      ALLOWED_PYTHON_VERSIONS: "python@3.11 python@3.12 python@3.13 python@3.14"
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -39,19 +48,6 @@ jobs:
             brew untap eschaar/vstack
           fi
           brew tap eschaar/vstack "$GITHUB_WORKSPACE"
-
-      # Validate that requested Python version is available in Homebrew before proceeding.
-      - name: Validate Python version availability
-        env:
-          PYTHON_VERSION: ${{ inputs.python_version || 'python@3.13' }}
-        run: |
-          if ! brew info "$PYTHON_VERSION" > /dev/null 2>&1; then
-            echo "ERROR: Python version '$PYTHON_VERSION' is not available in Homebrew."
-            echo "Available Python versions:"
-            brew search "^python@" || true
-            exit 1
-          fi
-          echo "✓ Python version '$PYTHON_VERSION' is available."
 
       # Normalize and validate payload fields from either dispatch or manual input.
       - name: Resolve payload
@@ -81,7 +77,9 @@ jobs:
               version = payload.get("version", "")
               sdist_url = payload.get("sdist_url", "")
               sha256 = payload.get("sha256", "")
-              python_version = payload.get("python_version", "python@3.13")
+              python_version = payload.get(
+                "python_version", os.environ.get("DEFAULT_PYTHON_VERSION", "python@3.13")
+              )
               signature = payload.get("signature", "")
 
               secret = os.environ.get("HOMEBREW_TAP_DISPATCH_SECRET", "")
@@ -109,7 +107,9 @@ jobs:
               version = os.environ.get("INPUT_VERSION", "")
               sdist_url = os.environ.get("INPUT_SDIST_URL", "")
               sha256 = os.environ.get("INPUT_SHA256", "")
-              python_version = os.environ.get("INPUT_PYTHON_VERSION", "python@3.13")
+              python_version = os.environ.get(
+                "INPUT_PYTHON_VERSION", os.environ.get("DEFAULT_PYTHON_VERSION", "python@3.13")
+              )
 
           if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
               print(f"ERROR: invalid version '{version}'", file=sys.stderr)
@@ -123,8 +123,13 @@ jobs:
               print("ERROR: sha256 must be a 64-character lowercase hex string", file=sys.stderr)
               sys.exit(1)
 
-          if not re.fullmatch(r"python@[0-9]+\.[0-9]+", python_version):
-              print(f"ERROR: python_version must match format python@X.Y (e.g., python@3.13)", file=sys.stderr)
+          allowed_python_versions = set(os.environ.get("ALLOWED_PYTHON_VERSIONS", "").split())
+          if python_version not in allowed_python_versions:
+              print(
+                  "ERROR: python_version must be one of: "
+                  + ", ".join(sorted(allowed_python_versions)),
+                  file=sys.stderr,
+              )
               sys.exit(1)
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
@@ -134,6 +139,20 @@ jobs:
               fh.write(f"python_version={python_version}\n")
           PY
 
+      # Validate that the resolved Python version is available in Homebrew.
+      - name: Validate Python version availability
+        env:
+          PYTHON_VERSION: ${{ steps.payload.outputs.python_version }}
+        run: |
+          if ! brew info "$PYTHON_VERSION" > /dev/null 2>&1; then
+            echo "ERROR: Python version '$PYTHON_VERSION' is not available in Homebrew."
+            echo "Allowed versions: $ALLOWED_PYTHON_VERSIONS"
+            echo "Available Python versions in Homebrew:"
+            brew search "^python@" || true
+            exit 1
+          fi
+          echo "✓ Python version '$PYTHON_VERSION' is available."
+
       # Make selected values explicit in logs for troubleshooting manual/dispatch runs.
       - name: Show resolved inputs
         run: |
@@ -142,7 +161,7 @@ jobs:
           echo "Resolved sha256: ${{ steps.payload.outputs.sha256 }}"
           echo "Resolved python_version: ${{ steps.payload.outputs.python_version }}"
 
-          # Write a clean base formula. Python resources are injected in later steps.
+      # Write a clean base formula. Python resources are injected in later steps.
       - name: Rewrite formula
         shell: bash
         run: |

@@ -60,17 +60,38 @@ jobs:
           fi
           brew tap eschaar/vstack "$GITHUB_WORKSPACE"
 
-      # Step 3: Install the formula
+      # Step 3: Collect concise environment diagnostics
+      # Keeps logs short while still showing Python/Homebrew context.
+      - name: Diagnostic info
+        run: |
+          echo "::group::brew version"
+          brew --version
+          echo "::endgroup::"
+
+          echo "::group::system python"
+          python3 --version || true
+          echo "::endgroup::"
+
+          echo "::group::installed brew python"
+          brew list --versions | grep -E '^python(@|$)' || true
+          echo "::endgroup::"
+
+      # Step 4: Install the formula
       # This verifies that the formula builds and installs correctly
       - name: Install formula
         run: brew install eschaar/vstack/vstack
 
-      # Step 4: Run the formula's test block
+      # Step 5: Install formula test dependencies
+      # `brew test` fails early when test dependencies are not present.
+      - name: Install test dependencies
+        run: brew install --only-dependencies --include-test eschaar/vstack/vstack
+
+      # Step 6: Run the formula's test block
       # Requires a valid `test do` block in the formula
       - name: Run formula test
         run: brew test eschaar/vstack/vstack
 
-      # Step 5: Audit the formula against Homebrew standards
+      # Step 7: Audit the formula against Homebrew standards
       # Ensures compliance with best practices and policies
       - name: Audit formula
         run: brew audit --strict --online eschaar/vstack/vstack

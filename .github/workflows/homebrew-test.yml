@@ -95,7 +95,7 @@ jobs:
         shell: bash
         run: |
           # Ensure Homebrew records test dependencies on the installed formula receipt.
-          brew reinstall --include-test "$FORMULA_FULL_NAME" || brew install --include-test "$FORMULA_FULL_NAME"
+          brew reinstall "$FORMULA_FULL_NAME" || brew install --include-test "$FORMULA_FULL_NAME"
           brew test "$FORMULA_FULL_NAME"
 
       # Step 6: Audit the formula against Homebrew standards

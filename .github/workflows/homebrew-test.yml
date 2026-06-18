@@ -45,6 +45,8 @@ jobs:
     env:
       # Speed up Homebrew commands by skipping implicit updates in this job.
       HOMEBREW_NO_AUTO_UPDATE: "1"
+      # Prevent Homebrew from removing deps between steps in CI.
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
       TAP_NAME: eschaar/vstack
       FORMULA_FULL_NAME: eschaar/vstack/vstack
       FORMULA_FILE: Formula/vstack.rb
@@ -108,7 +110,15 @@ jobs:
       - name: Run formula test
         id: test
         continue-on-error: true
-        run: brew test "$FORMULA_FULL_NAME"
+        shell: bash
+        run: |
+          tap_formula="$(brew --repository "$TAP_NAME")/$FORMULA_FILE"
+          python_formula="$(grep -Eo 'depends_on "python@[0-9]+\.[0-9]+"' "$tap_formula" | head -n1 | sed -E 's/depends_on "(python@[0-9]+\.[0-9]+)"/\1/')"
+          if [[ -n "$python_formula" ]]; then
+            brew install "$python_formula"
+            brew list --versions "$python_formula" || true
+          fi
+          brew test "$FORMULA_FULL_NAME"
 
       # Step 8: Audit the formula against Homebrew standards
       # Ensures compliance with best practices and policies

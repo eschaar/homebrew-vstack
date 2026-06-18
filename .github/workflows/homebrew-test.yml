@@ -82,56 +82,24 @@ jobs:
           echo "::endgroup::"
 
       # Step 4: Install the formula
-      # This verifies that the formula builds and installs correctly
+      # Install with test dependencies so `brew test` uses the same install context.
       - name: Install formula
-        run: brew install "$FORMULA_FULL_NAME"
+        run: brew install --include-test "$FORMULA_FULL_NAME"
 
-      # Step 5: Resolve and install declared Python dependency from formula
-      # Homebrew CI can occasionally miss test deps when formula metadata is stale.
-      - name: Install declared Python dependency
-        shell: bash
-        run: |
-          python_formula="$(grep -Eo 'depends_on "python@[0-9]+\.[0-9]+"' "$FORMULA_FILE" | head -n1 | sed -E 's/depends_on "(python@[0-9]+\.[0-9]+)"/\1/')"
-          if [[ -z "$python_formula" ]]; then
-            echo "ERROR: Could not resolve python dependency from $FORMULA_FILE"
-            exit 1
-          fi
-          echo "Resolved python dependency: $python_formula"
-          brew install "$python_formula"
-
-      # Step 6: Install formula test dependencies
-      # `brew test` fails early when test dependencies are not present.
-      - name: Install test dependencies
-        run: brew install --only-dependencies --include-test "$FORMULA_FULL_NAME"
-
-      # Step 7: Run the formula's test block
+      # Step 5: Run the formula's test block
       # Requires a valid `test do` block in the formula
       # Non-critical: allow workflow to continue even if test fails.
       - name: Run formula test
         id: test
         continue-on-error: true
-        shell: bash
-        run: |
-          missing_test_deps="$(brew deps --include-test --missing "$FORMULA_FULL_NAME" || true)"
-          if [[ -n "$missing_test_deps" ]]; then
-            echo "Installing missing test dependencies:"
-            echo "$missing_test_deps"
-            while IFS= read -r dep; do
-              [[ -n "$dep" ]] && brew install "$dep"
-            done <<< "$missing_test_deps"
-          fi
-          echo "Resolved test dependency versions:"
-          brew deps --include-test "$FORMULA_FULL_NAME" | while IFS= read -r dep; do
-            brew list --versions "$dep" || true
-          done
-          brew test "$FORMULA_FULL_NAME"
+        run: brew test "$FORMULA_FULL_NAME"
 
-      # Step 8: Audit the formula against Homebrew standards
+      # Step 6: Audit the formula against Homebrew standards
       # Ensures compliance with best practices and policies
       - name: Audit formula
         run: brew audit --strict --online "$FORMULA_FULL_NAME"
 
-      # Step 9: Generate job summary with test status
+      # Step 7: Generate job summary with test status
       - name: Add job summary
         run: |
           {
@@ -152,7 +120,7 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Step 10: Create GitHub Issue if test failed
+      # Step 8: Create GitHub Issue if test failed
       - name: Create issue on test failure
         if: failure() && steps.test.outcome == 'failure'
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea

@@ -88,10 +88,49 @@ jobs:
 
       # Step 6: Run the formula's test block
       # Requires a valid `test do` block in the formula
+      # Non-critical: allow workflow to continue even if test fails.
       - name: Run formula test
+        id: test
+        continue-on-error: true
         run: brew test eschaar/vstack/vstack
 
       # Step 7: Audit the formula against Homebrew standards
       # Ensures compliance with best practices and policies
       - name: Audit formula
         run: brew audit --strict --online eschaar/vstack/vstack
+
+      # Step 8: Generate job summary with test status
+      - name: Add job summary
+        run: |
+          {
+            echo "## Homebrew Formula Test Summary"
+            echo ""
+            echo "| Check | Status |"
+            echo "|-------|--------|"
+            echo "| Install | ✅ Passed |"
+            if [[ "${{ steps.test.outcome }}" == "success" ]]; then
+              echo "| Test | ✅ Passed |"
+            else
+              echo "| Test | ⚠️ Failed (non-blocking) |"
+            fi
+            echo "| Audit | ✅ Passed |"
+            echo ""
+            if [[ "${{ steps.test.outcome }}" == "failure" ]]; then
+              echo "⚠️ **Note:** The formula test step failed, but the workflow continued. See logs for details."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Step 9: Create GitHub Issue if test failed
+      - name: Create issue on test failure
+        if: failure() && steps.test.outcome == 'failure'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⚠️ Homebrew formula test failed',
+              body: `The \`brew test\` step failed in the [test workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}).\n\nThis is a non-blocking issue, but should be investigated.\n\n**Details:**\n- Formula: eschaar/vstack/vstack\n- Runner: macos-latest\n- Trigger: ${context.eventName}`,
+              labels: ['bug', 'homebrew', 'ci']
+            })

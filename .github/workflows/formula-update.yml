@@ -81,6 +81,7 @@ jobs:
               version = payload.get("version", "")
               sdist_url = payload.get("sdist_url", "")
               sha256 = payload.get("sha256", "")
+              python_version = payload.get("python_version", "python@3.13")
               signature = payload.get("signature", "")
 
               secret = os.environ.get("HOMEBREW_TAP_DISPATCH_SECRET", "")
@@ -132,6 +133,14 @@ jobs:
               fh.write(f"sha256={sha256}\n")
               fh.write(f"python_version={python_version}\n")
           PY
+
+      # Make selected values explicit in logs for troubleshooting manual/dispatch runs.
+      - name: Show resolved inputs
+        run: |
+          echo "Resolved version: ${{ steps.payload.outputs.version }}"
+          echo "Resolved sdist_url: ${{ steps.payload.outputs.sdist_url }}"
+          echo "Resolved sha256: ${{ steps.payload.outputs.sha256 }}"
+          echo "Resolved python_version: ${{ steps.payload.outputs.python_version }}"
 
           # Write a clean base formula. Python resources are injected in later steps.
       - name: Rewrite formula

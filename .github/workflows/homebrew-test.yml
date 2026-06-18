@@ -112,12 +112,18 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          tap_formula="$(brew --repository "$TAP_NAME")/$FORMULA_FILE"
-          python_formula="$(grep -Eo 'depends_on "python@[0-9]+\.[0-9]+"' "$tap_formula" | head -n1 | sed -E 's/depends_on "(python@[0-9]+\.[0-9]+)"/\1/')"
-          if [[ -n "$python_formula" ]]; then
-            brew install "$python_formula"
-            brew list --versions "$python_formula" || true
+          missing_test_deps="$(brew deps --include-test --missing "$FORMULA_FULL_NAME" || true)"
+          if [[ -n "$missing_test_deps" ]]; then
+            echo "Installing missing test dependencies:"
+            echo "$missing_test_deps"
+            while IFS= read -r dep; do
+              [[ -n "$dep" ]] && brew install "$dep"
+            done <<< "$missing_test_deps"
           fi
+          echo "Resolved test dependency versions:"
+          brew deps --include-test "$FORMULA_FULL_NAME" | while IFS= read -r dep; do
+            brew list --versions "$dep" || true
+          done
           brew test "$FORMULA_FULL_NAME"
 
       # Step 8: Audit the formula against Homebrew standards

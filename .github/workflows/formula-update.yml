@@ -41,14 +41,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
 
-      # Ensure the workflow always operates on this repository's tap contents.
-      - name: Tap local repository
-        run: |
-          if brew tap | grep -qx 'eschaar/vstack'; then
-            brew untap eschaar/vstack
-          fi
-          brew tap eschaar/vstack "$GITHUB_WORKSPACE"
-
       # Normalize and validate payload fields from either dispatch or manual input.
       - name: Resolve payload
         id: payload
@@ -187,6 +179,14 @@ jobs:
             end
           end
           RUBY
+
+      # Ensure the workflow now operates on this repository's updated tap contents.
+      - name: Tap local repository
+        run: |
+          if brew tap | grep -qx 'eschaar/vstack'; then
+            brew untap eschaar/vstack
+          fi
+          brew tap eschaar/vstack "$GITHUB_WORKSPACE"
 
       # Populate Python dependencies from package metadata (PyPI).
       - name: Auto-generate Python resources

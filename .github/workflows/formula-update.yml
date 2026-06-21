@@ -249,8 +249,10 @@ jobs:
           text = formula_path.read_text(encoding="utf-8")
           audit_output = audit_log.read_text(encoding="utf-8") if audit_log.exists() else ""
 
-          # Parse: Add `depends_on` lines above for "<lib>".
-          needed_libs = sorted(set(re.findall(r'Add `depends_on` lines above for "([^"]+)"\.', audit_output)))
+          # Parse hints like: for "libyaml". and for `"libyaml"`.
+          needed_libs = sorted(
+            set(re.findall(r'Add `depends_on` lines above for `?"([^"]+)"`?\.', audit_output))
+          )
 
           missing_libs = [lib for lib in needed_libs if f'depends_on "{lib}"' not in text]
           if missing_libs:

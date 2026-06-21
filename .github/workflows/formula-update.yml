@@ -272,7 +272,14 @@ jobs:
 
           echo "Detected Homebrew PyPI cooldown failure. Falling back to pip report resource generation."
 
-          BREW_PYTHON="$(brew --prefix "$PYTHON_VERSION")/bin/python3"
+          BREW_PYTHON="$(brew --prefix "$PYTHON_VERSION")/libexec/bin/python"
+          if [[ ! -x "$BREW_PYTHON" ]]; then
+            BREW_PYTHON="$(brew --prefix "$PYTHON_VERSION")/bin/python3"
+          fi
+          if [[ ! -x "$BREW_PYTHON" ]]; then
+            echo "ERROR: Could not find executable Python for $PYTHON_VERSION"
+            exit 1
+          fi
           "$BREW_PYTHON" - <<'PY'
           """Generate formula resource blocks from pip --report output as cooldown fallback."""
 

@@ -94,8 +94,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          # Ensure test dependencies are present without mutating the formula installation state.
-          brew install --include-test --only-dependencies "$FORMULA_FULL_NAME"
+          # Formula is already installed with --include-test in the previous step.
           brew test "$FORMULA_FULL_NAME"
 
       # Step 6: Audit the formula against Homebrew standards

@@ -221,6 +221,9 @@ jobs:
             end
 
             test do
+              python_formula = "${{ steps.payload.outputs.python_version }}"
+              python_minor = python_formula.delete_prefix("python@")
+              system Formula[python_formula].opt_bin/"python#{python_minor}", "--version"
               output = shell_output("#{bin}/vstack --help")
               assert_match(/usage:/i, output)
             end

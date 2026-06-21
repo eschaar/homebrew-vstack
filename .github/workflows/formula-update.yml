@@ -264,12 +264,24 @@ jobs:
       - name: Sync native dependencies from audit hints
         shell: bash
         run: |
-          set +e
-          brew audit --strict "$FORMULA_FULL_NAME" > audit.log 2>&1
-          set -e
+          # Re-run audit up to 3 times so newly suggested native deps are applied iteratively.
+          for attempt in 1 2 3; do
+            echo "Audit pass ${attempt}/3"
+            set +e
+            brew audit --strict "$FORMULA_FULL_NAME" > audit.log 2>&1
+            audit_exit=$?
+            set -e
 
-          python - <<'PY'
-          """Apply audit-suggested depends_on entries and deduplicate dependency lines."""
+            if [[ $audit_exit -eq 0 ]]; then
+              echo "Audit passed on pass ${attempt}."
+              break
+            fi
+
+            echo "Audit hints from pass ${attempt}:"
+            grep -E 'Add `depends_on` lines above for' audit.log || true
+
+            applied_count="$(python - <<'PY'
+          """Apply audit-suggested depends_on entries and de-duplicate dependency lines."""
 
           import os
           import re
@@ -283,29 +295,42 @@ jobs:
 
           # Parse hints like: for "libyaml". and for `"libyaml"`.
           needed_libs = sorted(
-            set(re.findall(r'Add `depends_on` lines above for `?"([^"]+)"`?\.', audit_output))
+              set(re.findall(r'Add `depends_on` lines above for `?"([^"]+)"`?\.', audit_output))
           )
 
           missing_libs = [lib for lib in needed_libs if f'depends_on "{lib}"' not in text]
           if missing_libs:
-            dep_block = "".join(f'  depends_on "{lib}"\n' for lib in missing_libs)
-            text = text.replace('license "MIT"\n\n', f'license "MIT"\n\n{dep_block}', 1)
+              dep_block = "".join(f'  depends_on "{lib}"\n' for lib in missing_libs)
+              text = text.replace('license "MIT"\n\n', f'license "MIT"\n\n{dep_block}', 1)
 
           # De-duplicate depends_on lines while preserving order.
           out_lines = []
           seen_dep_lines = set()
           for line in text.splitlines():
-            if line.strip().startswith('depends_on "'):
-              if line in seen_dep_lines:
-                continue
-              seen_dep_lines.add(line)
-            out_lines.append(line)
+              if line.strip().startswith('depends_on "'):
+                  if line in seen_dep_lines:
+                      continue
+                  seen_dep_lines.add(line)
+              out_lines.append(line)
 
           formula_path.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+          print(len(missing_libs))
           PY
+            )"
 
-          echo "Audit hints:"
-          cat audit.log || true
+            # Keep tapped formula aligned with workspace edits before next pass.
+            tap_formula="$(brew --repository "$TAP_NAME")/$FORMULA_FILE"
+            cp "$FORMULA_FILE" "$tap_formula"
+
+            if [[ "$applied_count" == "0" ]]; then
+              echo "No auto-fixable dependency hints found; failing with current audit output."
+              cat audit.log
+              exit $audit_exit
+            fi
+          done
+
+          echo "Final strict audit after applying hints:"
+          brew audit --strict "$FORMULA_FULL_NAME"
 
       # Keep generated resources visible in job logs for troubleshooting and reviews.
       - name: Show generated resources

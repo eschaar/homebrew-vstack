@@ -40,8 +40,9 @@ concurrency:
 jobs:
   test:
     name: Install, Test and Audit Formula
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: macos-latest
+    timeout-minutes: 30
     env:
       # Speed up Homebrew commands by skipping implicit updates in this job.
       HOMEBREW_NO_AUTO_UPDATE: "1"
@@ -49,7 +50,6 @@ jobs:
       HOMEBREW_NO_INSTALL_CLEANUP: "1"
       TAP_NAME: eschaar/vstack
       FORMULA_FULL_NAME: eschaar/vstack/vstack
-      FORMULA_FILE: Formula/vstack.rb
 
     steps:
       # Step 1: Checkout repository
@@ -85,85 +85,97 @@ jobs:
       # CI-only choice: include test dependencies so the formula's `test do` path
       # can be validated reliably. End users normally run plain `brew install`.
       - name: Install formula
+        id: install
         run: brew install --include-test "$FORMULA_FULL_NAME"
 
       # Step 5: Run the formula's test block
       # Requires a valid `test do` block in the formula
-      # Non-critical: allow workflow to continue even if test fails.
+      # Keep diagnostics available, then fail explicitly at the end when needed.
       - name: Run formula test
         id: test
         continue-on-error: true
         shell: bash
         run: |
-          # NOTE:
-          # `brew test` is a Homebrew developer command and can enforce dependency
-          # checks differently from `brew install` in CI. In practice, this means
-          # test-time checks can report missing python@X.Y even when installation
-          # used the formula's virtualenv with that Python.
-          #
-          # Why this matters here:
-          # - vstack is built in a virtualenv with Homebrew Python.
-          # - `brew test` itself runs in Homebrew's developer context.
-          # - If the formula Python is not explicitly present in that context,
-          #   CI may fail with "missing test dependencies: python@X.Y".
-          #
-          # This is most visible when formula Python differs from the runner's
-          # default/system Python (e.g. formula python@3.13 while system default
-          # is a different minor version).
+          set -euo pipefail
 
-          # Ensure formula-declared Homebrew Python is present for developer-mode brew test checks.
-          PYTHON_DEP="$(ruby -ne 'if $_ =~ /^\s*depends_on\s+"(python@[0-9]+\.[0-9]+)"/ then puts $1; exit end' "$FORMULA_FILE")"
-          if [[ -n "$PYTHON_DEP" ]]; then
-            brew install "$PYTHON_DEP"
+          # Track whether we had to use the CI fallback path.
+          echo "used_fallback=false" >> "$GITHUB_OUTPUT"
+
+          # In CI, `brew test` can sometimes report a missing python@X.Y test
+          # dependency even when that dependency is installed. Keep a guarded
+          # fallback for this known false-positive.
+
+          echo "::group::python diagnostics before brew test"
+          command -v python3 || true
+          python3 --version || true
+          brew list --versions | grep -E '^python(@|$)' || true
+          echo "::endgroup::"
+
+          # `brew test` validates the already installed formula keg.
+          TEST_LOG="$(mktemp)"
+          if brew test "$FORMULA_FULL_NAME" 2>&1 | tee "$TEST_LOG"; then
+            exit 0
           fi
 
-          # No formula reinstall is needed here: `brew test` runs the formula test
-          # block against the installed keg. This remains a CI validation flow,
-          # not an end-user install flow.
-          brew test "$FORMULA_FULL_NAME"
+          # Fallback only for the known false-positive case where the reported
+          # python dependency is actually installed in this runner.
+          if grep -Eq 'missing test dependencies: .*python@[0-9]+\.[0-9]+' "$TEST_LOG"; then
+            MISSING_PY_DEP="$(grep -Eo 'python@[0-9]+\.[0-9]+' "$TEST_LOG" | head -n1 || true)"
+            if [[ -n "$MISSING_PY_DEP" ]] && brew list --versions "$MISSING_PY_DEP" >/dev/null 2>&1; then
+              echo "::warning::brew test reported missing $MISSING_PY_DEP in CI, but it is installed; running fallback smoke test."
+              if command -v vstack >/dev/null 2>&1; then
+                vstack --help >/dev/null
+              else
+                "$(brew --prefix)/bin/vstack" --help >/dev/null
+              fi
+              echo "used_fallback=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          exit 1
 
       # Step 6: Audit the formula against Homebrew standards
       # Ensures compliance with best practices and policies
       - name: Audit formula
+        id: audit
         run: brew audit --strict --online "$FORMULA_FULL_NAME"
 
       # Step 7: Generate job summary with test status
       - name: Add job summary
+        if: always()
         run: |
           {
             echo "## Homebrew Formula Test Summary"
             echo ""
             echo "| Check | Status |"
             echo "|-------|--------|"
-            echo "| Install | ✅ Passed |"
+            if [[ "${{ steps.install.outcome }}" == "success" ]]; then
+              echo "| Install | ✅ Passed |"
+            else
+              echo "| Install | ❌ Failed |"
+            fi
             if [[ "${{ steps.test.outcome }}" == "success" ]]; then
               echo "| Test | ✅ Passed |"
             else
-              echo "| Test | ⚠️ Failed (non-blocking) |"
+              echo "| Test | ❌ Failed |"
             fi
-            echo "| Audit | ✅ Passed |"
+            if [[ "${{ steps.audit.outcome }}" == "success" ]]; then
+              echo "| Audit | ✅ Passed |"
+            else
+              echo "| Audit | ❌ Failed |"
+            fi
             echo ""
+            if [[ "${{ steps.test.outputs.used_fallback }}" == "true" ]]; then
+              echo "ℹ️ **Test note:** `brew test` hit the known CI python dependency false-positive; fallback smoke test passed."
+              echo ""
+            fi
             if [[ "${{ steps.test.outcome }}" == "failure" ]]; then
-              echo "⚠️ **Note:** The formula test step failed, but the workflow continued. See logs for details."
+              echo "❌ **Note:** The formula test step failed and the workflow is marked failed below. See logs for details."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Step 8: Create GitHub Issue if test failed
-      - name: Create issue on test failure
-        if: steps.test.outcome == 'failure'
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: '⚠️ Homebrew formula test failed',
-              body: `The \`brew test\` step failed in the [test workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}).\n\nThis is a non-blocking issue, but should be investigated.\n\n**Details:**\n- Formula: eschaar/vstack/vstack\n- Runner: macos-latest\n- Trigger: ${context.eventName}`,
-              labels: ['bug', 'homebrew', 'ci']
-            })
-
-      # Step 9: Mark workflow failed when `brew test` failed
+      # Step 8: Mark workflow failed when `brew test` failed
       # Keep `continue-on-error` on the test step for diagnostics and summary,
       # but fail the overall job explicitly at the end.
       - name: Fail workflow on test failure

@@ -249,11 +249,129 @@ jobs:
         shell: bash
         env:
           PYTHON_VERSION: ${{ steps.payload.outputs.python_version }}
+          VERSION: ${{ steps.payload.outputs.version }}
         run: |
           # Ensure the target Python version is installed in Homebrew's environment
           brew install "$PYTHON_VERSION"
-          # Generate resources using the resolved Python version from the formula
-          brew update-python-resources "$FORMULA_FULL_NAME"
+          # Generate resources using the resolved Python version from the formula.
+          # Freshly published PyPI releases can hit Homebrew's 24h cooldown guard.
+          set +e
+          brew update-python-resources "$FORMULA_FULL_NAME" 2>&1 | tee update-python-resources.log
+          update_exit=$?
+          set -e
+
+          if [[ $update_exit -eq 0 ]]; then
+          exit 0
+          fi
+
+          if ! grep -q -- '--uploaded-prior-to=' update-python-resources.log; then
+          echo "ERROR: update-python-resources failed for a non-cooldown reason."
+          cat update-python-resources.log
+          exit $update_exit
+          fi
+
+          echo "Detected Homebrew PyPI cooldown failure. Falling back to pip report resource generation."
+
+          BREW_PYTHON="$(brew --prefix "$PYTHON_VERSION")/bin/python3"
+          "$BREW_PYTHON" - <<'PY'
+          """Generate formula resource blocks from pip --report output as cooldown fallback."""
+
+          from __future__ import annotations
+
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          package_name = "vstack"
+          version = os.environ["VERSION"]
+          formula_path = Path(os.environ.get("FORMULA_FILE", "Formula/vstack.rb"))
+
+          pip_cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--disable-pip-version-check",
+            "--dry-run",
+            "--ignore-installed",
+            "--no-binary=:all:",
+            "--report=/dev/stdout",
+            f"{package_name}=={version}",
+          ]
+
+          proc = subprocess.run(pip_cmd, capture_output=True, text=True)
+          if proc.returncode != 0:
+            print("ERROR: pip report fallback failed", file=sys.stderr)
+            print(proc.stderr or proc.stdout, file=sys.stderr)
+            sys.exit(proc.returncode)
+
+          report = json.loads(proc.stdout)
+
+          def normalize(name: str) -> str:
+            return re.sub(r"[-_.]+", "-", name).lower()
+
+          resources: dict[str, tuple[str, str]] = {}
+          for item in report.get("install", []):
+            metadata = item.get("metadata") or {}
+            download_info = item.get("download_info") or {}
+            archive_info = download_info.get("archive_info") or {}
+            hashes = archive_info.get("hashes") or {}
+
+            name = metadata.get("name")
+            if not name:
+              continue
+
+            normalized = normalize(name)
+            if normalized == package_name:
+              continue
+
+            url = download_info.get("url")
+            sha256 = hashes.get("sha256")
+
+            if not url or not sha256:
+              print(f"ERROR: missing url/sha256 for dependency '{name}'", file=sys.stderr)
+              sys.exit(1)
+
+            resources[normalized] = (url, sha256)
+
+          ordered = sorted(resources.items())
+          blocks = []
+          for name, (url, sha256) in ordered:
+            blocks.append(
+              "\n".join(
+                [
+                  f'  resource "{name}" do',
+                  f'    url "{url}"',
+                  f'    sha256 "{sha256}"',
+                  "  end",
+                ]
+              )
+            )
+
+          text = formula_path.read_text(encoding="utf-8")
+          # Remove any pre-existing resource blocks, then inject fresh ones.
+          text = re.sub(
+            r"\n  resource \"[^\"]+\" do\n(?:    .*\n)*?  end\n",
+            "\n",
+            text,
+            flags=re.MULTILINE,
+          )
+
+          resource_section = "\n\n".join(blocks)
+          if resource_section:
+            text = text.replace("\n\n  def install\n", f"\n\n{resource_section}\n\n  def install\n", 1)
+
+          formula_path.write_text(text, encoding="utf-8")
+          print(f"Generated {len(ordered)} resource block(s) via pip fallback.")
+          PY
+
+          # Keep tapped formula aligned after fallback edits.
+          tap_formula="$(brew --repository "$TAP_NAME")/$FORMULA_FILE"
+          cp "$FORMULA_FILE" "$tap_formula"
 
       # update-python-resources edits the tapped formula path; copy it back to repo workspace.
       - name: Sync generated formula back to workspace

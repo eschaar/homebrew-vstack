@@ -94,8 +94,11 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          # Ensure Homebrew records test dependencies on the installed formula receipt.
-          brew reinstall "$FORMULA_FULL_NAME" || brew install --include-test "$FORMULA_FULL_NAME"
+          # brew reinstall can drop include-test context; do a clean install with test deps.
+          if brew list --formula | grep -qx "$(basename "$FORMULA_FULL_NAME")"; then
+            brew uninstall --force "$FORMULA_FULL_NAME"
+          fi
+          brew install --include-test "$FORMULA_FULL_NAME"
           brew test "$FORMULA_FULL_NAME"
 
       # Step 6: Audit the formula against Homebrew standards

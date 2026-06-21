@@ -167,7 +167,7 @@ jobs:
             fi
             echo ""
             if [[ "${{ steps.test.outputs.used_fallback }}" == "true" ]]; then
-              echo "ℹ️ **Test note:** `brew test` hit the known CI python dependency false-positive; fallback smoke test passed."
+              echo "ℹ️ **Test note:** brew test hit the known CI python dependency false-positive; fallback smoke test passed."
               echo ""
             fi
             if [[ "${{ steps.test.outcome }}" == "failure" ]]; then

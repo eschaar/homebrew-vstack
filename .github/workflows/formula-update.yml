@@ -64,9 +64,12 @@ jobs:
           """Validate dispatch/manual inputs and emit normalized workflow outputs."""
 
           import json
+          import hashlib
           import os
           import re
           import sys
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
 
           event = os.environ["EVENT_NAME"]
 
@@ -128,6 +131,35 @@ jobs:
 
           if not re.fullmatch(os.environ.get("SHA256_REGEX", r"[a-f0-9]{64}"), sha256):
               print("ERROR: sha256 must be a 64-character lowercase hex string", file=sys.stderr)
+              sys.exit(1)
+
+            # Ensure the provided sdist URL is reachable and matches the claimed SHA256.
+            try:
+              request = Request(sdist_url, headers={"User-Agent": "homebrew-vstack-formula-update"})
+              digest = hashlib.sha256()
+              with urlopen(request, timeout=30) as response:
+                while True:
+                  chunk = response.read(1024 * 1024)
+                  if not chunk:
+                    break
+                  digest.update(chunk)
+            except HTTPError as exc:
+              print(f"ERROR: sdist_url returned HTTP {exc.code}: {sdist_url}", file=sys.stderr)
+              sys.exit(1)
+            except URLError as exc:
+              print(f"ERROR: could not download sdist_url: {exc.reason}", file=sys.stderr)
+              sys.exit(1)
+            except Exception as exc:
+              print(f"ERROR: failed to validate sdist_url: {exc}", file=sys.stderr)
+              sys.exit(1)
+
+            downloaded_sha256 = digest.hexdigest()
+            if downloaded_sha256 != sha256:
+              print(
+                "ERROR: sha256 mismatch for sdist_url: "
+                + f"expected {sha256}, got {downloaded_sha256}",
+                file=sys.stderr,
+              )
               sys.exit(1)
 
           allowed_python_versions = set(os.environ.get("ALLOWED_PYTHON_VERSIONS", "").split())

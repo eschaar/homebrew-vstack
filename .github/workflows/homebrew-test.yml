@@ -82,7 +82,8 @@ jobs:
           echo "::endgroup::"
 
       # Step 4: Install the formula
-      # Install with test dependencies so `brew test` uses the same install context.
+      # CI-only choice: include test dependencies so the formula's `test do` path
+      # can be validated reliably. End users normally run plain `brew install`.
       - name: Install formula
         run: brew install --include-test "$FORMULA_FULL_NAME"
 
@@ -94,7 +95,31 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          # Formula is already installed with --include-test in the previous step.
+          # NOTE:
+          # `brew test` is a Homebrew developer command and can enforce dependency
+          # checks differently from `brew install` in CI. In practice, this means
+          # test-time checks can report missing python@X.Y even when installation
+          # used the formula's virtualenv with that Python.
+          #
+          # Why this matters here:
+          # - vstack is built in a virtualenv with Homebrew Python.
+          # - `brew test` itself runs in Homebrew's developer context.
+          # - If the formula Python is not explicitly present in that context,
+          #   CI may fail with "missing test dependencies: python@X.Y".
+          #
+          # This is most visible when formula Python differs from the runner's
+          # default/system Python (e.g. formula python@3.13 while system default
+          # is a different minor version).
+
+          # Ensure formula-declared Homebrew Python is present for developer-mode brew test checks.
+          PYTHON_DEP="$(ruby -ne 'if $_ =~ /^\s*depends_on\s+"(python@[0-9]+\.[0-9]+)"/ then puts $1; exit end' "$FORMULA_FILE")"
+          if [[ -n "$PYTHON_DEP" ]]; then
+            brew install "$PYTHON_DEP"
+          fi
+
+          # No formula reinstall is needed here: `brew test` runs the formula test
+          # block against the installed keg. This remains a CI validation flow,
+          # not an end-user install flow.
           brew test "$FORMULA_FULL_NAME"
 
       # Step 6: Audit the formula against Homebrew standards

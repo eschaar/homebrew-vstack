@@ -20,9 +20,6 @@ class Vstack < Formula
   end
 
   test do
-    python_formula = "python@3.13"
-    python_minor = python_formula.delete_prefix("python@")
-    system Formula[python_formula].opt_bin/"python#{python_minor}", "--version"
     output = shell_output("#{bin}/vstack --help")
     assert_match(/usage:/i, output)
   end

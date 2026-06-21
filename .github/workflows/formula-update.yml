@@ -113,6 +113,19 @@ jobs:
               print("ERROR: sdist_url must point to files.pythonhosted.org", file=sys.stderr)
               sys.exit(1)
 
+          sdist_match = re.search(r"/[^/]+-([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz$", sdist_url)
+          if not sdist_match:
+              print("ERROR: sdist_url must end with '<package>-X.Y.Z.tar.gz'", file=sys.stderr)
+              sys.exit(1)
+
+          sdist_version = sdist_match.group(1)
+          if sdist_version != version:
+              print(
+                  f"ERROR: version mismatch: input version is '{version}' but sdist_url contains '{sdist_version}'",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
           if not re.fullmatch(os.environ.get("SHA256_REGEX", r"[a-f0-9]{64}"), sha256):
               print("ERROR: sha256 must be a 64-character lowercase hex string", file=sys.stderr)
               sys.exit(1)

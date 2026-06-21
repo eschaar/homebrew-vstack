@@ -20,7 +20,9 @@ class Vstack < Formula
   end
 
   test do
-    output = shell_output("#{bin}/vstack --help")
+    # Run through the formula virtualenv Python to avoid relying on system Python.
+    venv_python = libexec/"bin/python3"
+    output = shell_output("#{venv_python} #{bin}/vstack --help")
     assert_match(/usage:/i, output)
   end
 end

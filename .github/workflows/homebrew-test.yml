@@ -150,7 +150,7 @@ jobs:
 
       # Step 8: Create GitHub Issue if test failed
       - name: Create issue on test failure
-        if: failure() && steps.test.outcome == 'failure'
+        if: steps.test.outcome == 'failure'
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -162,3 +162,12 @@ jobs:
               body: `The \`brew test\` step failed in the [test workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}).\n\nThis is a non-blocking issue, but should be investigated.\n\n**Details:**\n- Formula: eschaar/vstack/vstack\n- Runner: macos-latest\n- Trigger: ${context.eventName}`,
               labels: ['bug', 'homebrew', 'ci']
             })
+
+      # Step 9: Mark workflow failed when `brew test` failed
+      # Keep `continue-on-error` on the test step for diagnostics and summary,
+      # but fail the overall job explicitly at the end.
+      - name: Fail workflow on test failure
+        if: steps.test.outcome == 'failure'
+        run: |
+          echo "::error::brew test failed; see 'Run formula test' step output."
+          exit 1

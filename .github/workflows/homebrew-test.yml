@@ -8,12 +8,14 @@ on:
     branches: [ main ]
     paths:
       - "Formula/*.rb"
+      - ".github/workflows/formula-update.yml"
       - ".github/workflows/homebrew-test.yml"
 
   # Run for pull requests that modify the formula
   pull_request:
     paths:
       - "Formula/*.rb"
+      - ".github/workflows/formula-update.yml"
       - ".github/workflows/homebrew-test.yml"
 
   # Run after the formula-update workflow finishes successfully on main.

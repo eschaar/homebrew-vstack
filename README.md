@@ -36,3 +36,7 @@ brew install eschaar/vstack/vstack
 ## Maintenance
 
 This repository is updated automatically from the release pipeline in [eschaar/vstack](https://github.com/eschaar/vstack) through a signed `repository_dispatch` event.
+
+Formula updates share one concurrency group and do not cancel a running update.
+Each run checks out the latest `main` after waiting, so queued updates do not
+rewrite a stale formula from the triggering event.

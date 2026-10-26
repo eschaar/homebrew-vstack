@@ -30,6 +30,10 @@ permissions:
   # Required to commit and push formula updates back to main.
   contents: write
 
+concurrency:
+  group: formula-update-main
+  cancel-in-progress: false
+
 jobs:
   update-formula:
     # macOS provides a stable Homebrew environment for resource generation.
@@ -46,6 +50,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          # Queued updates must use the latest formula, not the event's old commit.
+          ref: main
 
       # Normalize and validate payload fields from either dispatch or manual input.
       - name: Resolve payload

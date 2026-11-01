@@ -67,6 +67,9 @@ jobs:
           fi
           brew tap "$TAP_NAME" "$GITHUB_WORKSPACE"
 
+      - name: Trust local formula for developer commands
+        run: brew trust --formula "$FORMULA_FULL_NAME"
+
       # Step 3: Collect concise environment diagnostics
       # Keeps logs short while still showing Python/Homebrew context.
       - name: Diagnostic info

@@ -251,6 +251,9 @@ jobs:
           tap_formula="$(brew --repository "$TAP_NAME")/$FORMULA_FILE"
           cp "$FORMULA_FILE" "$tap_formula"
 
+      - name: Trust local formula for developer commands
+        run: brew trust --formula "$FORMULA_FULL_NAME"
+
       # Populate Python dependencies from package metadata (PyPI).
       - name: Auto-generate Python resources
         shell: bash
